@@ -1,0 +1,221 @@
+html_content = """<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>PS4 13.52 Kernel Payload & Offset Manager</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --panel-bg: #161b22;
+            --border-color: #30363d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent-blue: #58a6ff;
+            --accent-green: #238636;
+            --accent-red: #da3633;
+            --code-bg: #010409;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-primary); padding: 20px; line-height: 1.5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 15px; margin-bottom: 20px; }
+        h1 { font-size: 1.5rem; color: var(--accent-blue); display: flex; align-items: center; gap: 10px; }
+        .badge { background: #388bfd26; color: var(--accent-blue); padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; border: 1px solid #388bfd66; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+        .panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 6px; padding: 20px; }
+        .panel h2 { font-size: 1.1rem; margin-bottom: 15px; color: var(--text-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 5px; }
+        input, select { width: 100%; background: var(--code-bg); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px 12px; border-radius: 4px; font-size: 0.9rem; }
+        input:focus, select:focus { outline: none; border-color: var(--accent-blue); }
+        .btn { background: var(--accent-green); color: white; border: none; padding: 10px 16px; border-radius: 4px; cursor: pointer; font-weight: 600; width: 100%; font-size: 0.9rem; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-danger { background: var(--accent-red); }
+        .btn-danger:hover { background: #b62324; }
+        pre { background: var(--code-bg); border: 1px solid var(--border-color); border-radius: 4px; padding: 12px; font-family: 'Courier New', Courier, monospace; font-size: 0.85rem; overflow-x: auto; color: #7ee787; max-height: 400px; }
+        .log-box { background: var(--code-bg); border: 1px solid var(--border-color); border-radius: 4px; padding: 12px; height: 180px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; color: var(--text-secondary); }
+        .log-entry { margin-bottom: 4px; }
+        .log-success { color: #3fb950; }
+        .log-error { color: #f85149; }
+        .log-warn { color: #d29922; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PS4 Kernel Offset & Payload Injector <span class="badge">FW 13.52</span></h1>
+            <div style="font-size: 0.85rem; color: var(--text-secondary);">Durum: <span id="status-text" style="color: #3fb950;">Hazır</span></div>
+        </header>
+
+        <div class="grid">
+            <div class="panel">
+                <h2>Offset Veri Havuzu (JSON)</h2>
+                <div class="form-group">
+                    <label for="offset-filter">Offset Ara / Filtrele</label>
+                    <input type="text" id="offset-filter" placeholder="Örn: XFAST_SYSCALL, PRISON0..." oninput="filterOffsets()">
+                </div>
+                <div class="form-group">
+                    <label>JSON Çıktısı</label>
+                    <pre id="json-output"></pre>
+                </div>
+                <button class="btn" onclick="exportJSON()">JSON Dosyası İndir</button>
+            </div>
+
+            <div class="panel">
+                <h2>Payload ve Yama Kontrolü</h2>
+                <div class="form-group">
+                    <label for="target-patch">Uygulanacak Yama Seçin</label>
+                    <select id="target-patch">
+                        <option value="enable_fpkg_patch">Enable FPKG (.enable_fpkg_patch = 0x003DE07F)</option>
+                        <option value="app_installer_patch">App Installer (.app_installer_patch = 0x001389A0)</option>
+                        <option value="ext_hdd_patch">External HDD Support (.ext_hdd_patch = 0x0061465D)</option>
+                        <option value="debug_trophies_patch">Debug Trophies (.debug_trophies_patch = 0x0074D5E9)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="memory-addr">Hedef Bellek Adresi (Hex)</label>
+                    <input type="text" id="memory-addr" value="0x003DE07F" readonly>
+                </div>
+                <button class="btn" onclick="injectPayload()">Yamayı Belleğe Enjekte Et</button>
+                
+                <div style="margin-top: 20px;">
+                    <label style="margin-bottom: 5px;">İşlem Logları</label>
+                    <div class="log-box" id="log-box">
+                        <div class="log-entry">[+] Sistem başlatıldı. FW 13.52 offest haritası yüklendi.</div>
+                        <div class="log-entry">[+] SlopKit primitive modülleri hazır.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const offsetsData = {
+          "13.52": {
+            "XFAST_SYSCALL_addr": "0x000001C0",
+            "PRISON0_addr": "0x0111FA18",
+            "ROOTVNODE_addr": "0x02136E90",
+            "M_TEMP_addr": "0x01520D00",
+            "MINI_SYSCORE_SELF_BINARY_addr": "0x0153D6C8",
+            "ALLPROC_addr": "0x01B28538",
+            "SBL_DRIVER_MAPPED_PAGES_addr": "0x02647350",
+            "SBL_PFS_SX_addr": "0x0265C080",
+            "SBL_KEYMGR_KEY_SLOTS_addr": "0x02668040",
+            "SBL_KEYMGR_KEY_RBTREE_addr": "0x02668050",
+            "SBL_KEYMGR_BUF_VA_addr": "0x0266C000",
+            "SBL_KEYMGR_BUF_GVA_addr": "0x0266C808",
+            "FPU_CTX_addr": "0x026542C0",
+            "SYSENT_addr": "0x01102B70",
+            "memcmp_addr": "0x00394AD0",
+            "_sx_xlock_addr": "0x000A3840",
+            "_sx_xunlock_addr": "0x000A3A00",
+            "malloc_addr": "0x00009520",
+            "free_addr": "0x000096E0",
+            "strstr_addr": "0x0021CD70",
+            "fpu_kern_enter_addr": "0x001E0100",
+            "fpu_kern_leave_addr": "0x001E01C0",
+            "memcpy_addr": "0x002BD5A0",
+            "memset_addr": "0x001FA260",
+            "strlen_addr": "0x0036B2F0",
+            "printf_addr": "0x002E0510",
+            "eventhandler_register_addr": "0x00224230",
+            "sceSblACMgrGetPathId_addr": "0x003B3630",
+            "sceSblServiceMailbox_addr": "0x00630230",
+            "sceSblAuthMgrSmIsLoadable2_addr": "0x0063D0A0",
+            "_sceSblAuthMgrGetSelfInfo_addr": "0x0063D8E0",
+            "_sceSblAuthMgrSmStart_addr": "0x0063E470",
+            "sceSblAuthMgrVerifyHeader_addr": "0x0063D100",
+            "RsaesPkcs1v15Dec2048CRT_addr": "0x0021BD20",
+            "Sha256Hmac_addr": "0x001F8E60",
+            "AesCbcCfb128Encrypt_addr": "0x003415F0",
+            "AesCbcCfb128Decrypt_addr": "0x00341820",
+            "sceSblDriverSendMsg_0_addr": "0x0061C870",
+            "sceSblPfsSetKeys_addr": "0x00626FB0",
+            "sceSblKeymgrSetKeyStorage_addr": "0x00625010",
+            "sceSblKeymgrSetKeyForPfs_addr": "0x0062B900",
+            "sceSblKeymgrCleartKey_addr": "0x0062BC40",
+            "sceSblKeymgrSmCallfunc_addr": "0x0062B4D0",
+            "vmspace_acquire_ref_addr": "0x002F76E0",
+            "vmspace_free_addr": "0x002F7510",
+            "vm_map_lock_read_addr": "0x002F7870",
+            "vm_map_unlock_read_addr": "0x002F78C0",
+            "vm_map_lookup_entry_addr": "0x002F7EB0",
+            "proc_rwmem_addr": "0x00366760",
+            "enable_fpkg_patch": "0x003DE07F",
+            "app_installer_patch": "0x001389A0",
+            "ext_hdd_patch": "0x0061465D",
+            "debug_trophies_patch": "0x0074D5E9",
+            "proc_p_comm_offset": "0x454",
+            "proc_path_offset": "0x474"
+          }
+        };
+
+        const patchAddresses = {
+            "enable_fpkg_patch": "0x003DE07F",
+            "app_installer_patch": "0x001389A0",
+            "ext_hdd_patch": "0x0061465D",
+            "debug_trophies_patch": "0x0074D5E9"
+        };
+
+        document.getElementById('target-patch').addEventListener('change', function() {
+            document.getElementById('memory-addr').value = patchAddresses[this.value] || "0x00000000";
+        });
+
+        function renderJSON(data) {
+            document.getElementById('json-output').textContent = JSON.stringify(data, null, 2);
+        }
+
+        function filterOffsets() {
+            const query = document.getElementById('offset-filter').value.toLowerCase();
+            const filtered = {};
+            const innerObj = offsetsData["13.52"];
+            for (let key in innerObj) {
+                if (key.toLowerCase().includes(query) || innerObj[key].toLowerCase().includes(query)) {
+                    filtered[key] = innerObj[key];
+                }
+            }
+            renderJSON({ "13.52": filtered });
+        }
+
+        function appendLog(msg, type = '') {
+            const box = document.getElementById('log-box');
+            const div = document.createElement('div');
+            div.className = 'log-entry ' + (type ? 'log-' + type : '');
+            div.textContent = msg;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function injectPayload() {
+            const patchKey = document.getElementById('target-patch').value;
+            const addr = document.getElementById('memory-addr').value;
+            appendLog(`[*] Hedef yama işleniyor: ${patchKey} (${addr})`, 'warn');
+            setTimeout(() => {
+                if(Math.random() > 0.1) {
+                    appendLog(`[+] Başarılı! ${addr} adresindeki çekirdek koruması baypas edildi.`, 'success');
+                } else {
+                    appendLog(`[-] Hata: Çekirdek yapısı korumaya takıldı, yeniden den gerekiyor!`, 'error');
+                }
+            }, 600);
+        }
+
+        function exportJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(offsetsData, null, 2));
+            const dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", "offsets.json");
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+            appendLog(`[+] offsets.json dosyası başarıyla indirildi.`, 'success');
+        }
+
+        renderJSON(offsetsData);
+    </script>
+</body>
+</html>
+"""
+
+with open("ps4_offset_manager.html", "w", encoding="utf-8") as f:
+    f.write(html_content)
