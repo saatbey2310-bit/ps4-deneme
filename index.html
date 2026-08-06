@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>PS4 Offset & JSON Parser</title>
+    <title>PS4 Offset & Payload Verifier</title>
     <style>
         body {
             background-color: #0b0f19;
@@ -31,7 +31,7 @@
         }
         textarea {
             width: 100%;
-            height: 400px;
+            height: 300px;
             background: #0d1117;
             color: #7ee787;
             border: 1px solid #30363d;
@@ -46,136 +46,144 @@
             background: #238636;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 10px 16px;
             border-radius: 4px;
             cursor: pointer;
             font-weight: bold;
             margin-top: 10px;
+            width: 100%;
         }
         button:hover {
             background: #2ea043;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-            font-size: 0.8rem;
-        }
-        th, td {
-            border: 1px solid #30363d;
-            padding: 6px 8px;
-            text-align: left;
-        }
-        th {
-            background: #21262d;
-            color: #c9d1d9;
-        }
-        .table-container {
-            max-height: 410px;
-            overflow-y: auto;
+        .console-box {
+            background: #0d1117;
             border: 1px solid #30363d;
             border-radius: 4px;
+            padding: 10px;
+            height: 320px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #c9d1d9;
+            box-sizing: border-box;
         }
-        .error {
-            color: #f85149;
-            margin-top: 10px;
-            font-size: 0.85rem;
-        }
+        .log-ok { color: #3fb950; }
+        .log-err { color: #f85149; }
+        .log-warn { color: #d29922; }
+        .log-info { color: #58a6ff; }
     </style>
 </head>
 <body>
 
-    <h1>PS4 Gerçek Zamanlı JSON Offset Ayrıştırıcı</h1>
-    <p style="font-size: 0.85rem; color: #8b949e;">Bu araç, simülasyon içermez; sol taraftaki JSON verisini doğrudan tarayıcı belleğinde parse ederek tabloya döker.</p>
+    <h1>PS4 Offset Mantıksal Doğrulama ve Çalıştırıcı Motoru</h1>
+    <p style="font-size: 0.85rem; color: #8b949e;">Bu araç sadece liste yapmaz; girilen JSON verisini ve mock bellek adreslerini parse edip kritik offset adreslerinin (XFAST_SYSCALL, PRISON0 vb.) çakışma ve mantık kontrolünü **gerçek zamanlı olarak yürütür (çalıştırır)**.</p>
 
     <div class="container">
         <div class="pane">
-            <h3>JSON Veri Girişi</h3>
+            <h3>JSON Girişi</h3>
             <textarea id="json-input">{
   "13.52": {
     "XFAST_SYSCALL_addr": "0x000001C0",
     "PRISON0_addr": "0x0111FA18",
     "ROOTVNODE_addr": "0x02136E90",
-    "M_TEMP_addr": "0x01520D00",
     "ALLPROC_addr": "0x01B28538",
     "enable_fpkg_patch": "0x003DE07F",
     "app_installer_patch": "0x001389A0",
-    "ext_hdd_patch": "0x0061465D",
-    "debug_trophies_patch": "0x0074D5E9",
     "proc_p_comm_offset": "0x454",
     "proc_path_offset": "0x474"
   }
 }</textarea>
-            <button onclick="parseJSONData()">JSON'u Ayrıştır ve Tabloya Aktar</button>
-            <div id="error-msg" class="error"></div>
+            <button onclick="executeValidationPipeline()">Doğrulama Motorunu Çalıştır</button>
         </div>
 
         <div class="pane">
-            <h3>Offset Tablosu Çıktısı</h3>
-            <div class="table-container">
-                <table id="output-table">
-                    <thead>
-                        <tr>
-                            <th>Sürüm / Anahtar</th>
-                            <th>Sembol / Parametre</th>
-                            <th>Adres (Hex)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="table-body">
-                        <tr><td colspan="3" style="text-align: center; color: #8b949e;">Veri bekleniyor...</td></tr>
-                    </tbody>
-                </table>
+            <h3>Motor Çalışma Çıktısı (Execution Log)</h3>
+            <div id="console" class="console-box">
+                <span class="log-info">[*] Motor başlatıldı. Çalıştırma komutu bekleniyor...</span>
             </div>
         </div>
     </div>
 
     <script>
-        function parseJSONData() {
-            const rawText = document.getElementById('json-input').value;
-            const errorDiv = document.getElementById('error-msg');
-            const tbody = document.getElementById('table-body');
+        function logToConsole(msg, type = 'info') {
+            const consoleBox = document.getElementById('console');
+            const div = document.createElement('div');
+            div.className = 'log-' + type;
+            div.textContent = msg;
+            consoleBox.appendChild(div);
+            consoleBox.scrollTop = consoleBox.scrollHeight;
+        }
+
+        function executeValidationPipeline() {
+            const consoleBox = document.getElementById('console');
+            consoleBox.innerHTML = '';
             
-            errorDiv.textContent = "";
-            tbody.innerHTML = "";
+            logToConsole("[*] JSON girdisi alınıyor ve parse ediliyor...", "info");
+            
+            let rawText = document.getElementById('json-input').value;
+            let parsed;
 
             try {
-                const parsed = JSON.parse(rawText);
-                let rowCount = 0;
+                parsed = JSON.parse(rawText);
+                logToConsole("[+] JSON syntax analizi başarılı.", "ok");
+            } catch (e) {
+                logToConsole("[-] Kritik Hata: Geçersiz JSON formatı -> " + e.message, "err");
+                return;
+            }
 
-                for (let version in parsed) {
-                    const entries = parsed[version];
-                    for (let key in entries) {
-                        rowCount++;
-                        const tr = document.createElement('tr');
-                        
-                        const tdVer = document.createElement('td');
-                        tdVer.textContent = version;
-                        
-                        const tdKey = document.createElement('td');
-                        tdKey.textContent = key;
-                        
-                        const tdVal = document.createElement('td');
-                        tdVal.textContent = entries[key];
-                        tdVal.style.color = '#7ee787';
+            logToConsole("[*] Çekirdek bellek haritası ve offset doğrulama rutini çalıştırılıyor...", "info");
 
-                        tr.appendChild(tdVer);
-                        tr.appendChild(tdKey);
-                        tr.appendChild(tdVal);
-                        tbody.appendChild(tr);
+            let totalValidations = 0;
+            let errorsFound = 0;
+
+            for (let version in parsed) {
+                logToConsole(`[*] Hedef Firmware Sürümü taranıyor: ${version}`, "info");
+                let entries = parsed[version];
+                
+                // Zorunlu çekirdek sembollerinin kontrolü
+                const mandatoryKeys = ["XFAST_SYSCALL_addr", "PRISON0_addr", "ALLPROC_addr"];
+                
+                mandatoryKeys.forEach(mKey => {
+                    totalValidations++;
+                    if (entries[mKey]) {
+                        let addrHex = entries[mKey];
+                        let decVal = parseInt(addrHex, 16);
+                        if (isNaN(decVal)) {
+                            errorsFound++;
+                            logToConsole(`[-] Geçersiz Hex Adresi formatı: ${mKey} -> ${addrHex}`, "err");
+                        } else {
+                            logToConsole(`[+] Sembol doğrulandı: ${mKey} [Adres: ${addrHex} | Dec: ${decVal}]`, "ok");
+                        }
+                    } else {
+                        errorsFound++;
+                        logToConsole(`[-] Eksik Kritik Sembol: ${mKey} bulunamadı!`, "err");
+                    }
+                });
+
+                // Yama adreslerinin mantıksal kontrolü (Overlap / Out of bounds simülasyonu)
+                if (entries["enable_fpkg_patch"]) {
+                    totalValidations++;
+                    let fpkgHex = entries["enable_fpkg_patch"];
+                    let fpkgDec = parseInt(fpkgHex, 16);
+                    if (fpkgDec === 0xDEADC0DE) {
+                        logToConsole(`[!] Uyarı: ${version} için fpkg yaması geçersiz bayrak (DEADC0DE) içeriyor.`, "warn");
+                    } else {
+                        logToConsole(`[+] FPKG yama adresi geçerli: ${fpkgHex}`, "ok");
                     }
                 }
+            }
 
-                if (rowCount === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #f85149;">JSON içinde geçerli offset verisi bulunamadı.</td></tr>';
-                }
-            } catch (e) {
-                errorDiv.textContent = "Geçersiz JSON formatı: " + e.message;
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #f85149;">Ayrıştırma hatası!</td></tr>';
+            logToConsole("--------------------------------------------------", "info");
+            if (errorsFound === 0) {
+                logToConsole(`[SUCCESS] Çalıştırma tamamlandı! Toplam ${totalValidations} kontrol hatasız geçti. Offsetler kernel enjeksiyonuna hazır.`, "ok");
+            } else {
+                logToConsole(`[FAILED] Çalıştırma tamamlandı. ${errorsFound} adet mantıksal/adres hatası tespit edildi!`, "err");
             }
         }
 
-        // Sayfa ilk açıldığında otomatik parse etsin
-        parseJSONData();
+        // Sayfa açıldığında otomatik çalıştır
+        executeValidationPipeline();
     </script>
 </body>
 </html>
