@@ -1,60 +1,55 @@
-// Zekice Hamle 2.0: Gerçek Adres Bazlı Bellek Okuma Motoru
-function createRealBaseExploitEngine() {
-    console.log("[*] Lab ortamı kuruluyor: Gerçek nesne adresleme başlatıldı...");
+// NaN-Boxing ve Double Unboxing Krizini Çözen Bit Düzeyi Motoru
+function createBitLevelEngine() {
+    console.log("[*] Bellek paylaşım alanı (ArrayBuffer) oluşturuluyor...");
     
-    let dblArray = [1.1, 2.2, 3.3, 4.4];
-    let objContainer = { marker: 0x41414141 };
-    
-    let typeConfusionBox = {
-        slotA: 1337,
-        slotB: 3.3
-    };
+    // 8 baytlık ortak bir bellek alanı (Buffer) tahsis ediyoruz
+    const buffer = new ArrayBuffer(8);
+    const f64 = new Float64Array(buffer);
+    const u32 = new Uint32Array(buffer);
+    const b64 = new BigInt64Array(buffer);
 
-    // addrof: Gerçek bir nesnenin bellek adresini sızdıran primitif
-    let addrof = function(targetObject) {
-        typeConfusionBox.slotA = targetObject;
-        return dblArray[1]; // Double array üzerinden ham bellek pointer'ı
-    };
+    // Float (Kayan noktalı) değeri 64-bit Integer adresine çevirme (Float-to-Int)
+    function f2i(val) {
+        f64[0] = val;
+        return b64[0];
+    }
 
-    // fakeobj: Ham adresi nesneye çeviren primitif
-    let fakeobj = function(rawAddress) {
-        dblArray[1] = rawAddress;
-        return typeConfusionBox.slotA;
-    };
+    // 64-bit Integer adresi Float formatına çevirme (Int-to-Float)
+    function i2f(val) {
+        b64[0] = val;
+        return f64[0];
+    }
+
+    console.log("[+] f2i ve i2f köprüleri başarıyla kuruldu!");
+
+    let dblArray = [1.1, 2.2, 3.3];
+    let objContainer = { secret: 0x41414141 };
 
     return {
-        getRealAddress: function(obj) {
-            return addrof(obj);
+        // Ham veriyi bit kaybı yaşamadan BigInt adresine çevirerek okuma
+        readPointer: function() {
+            let rawDouble = dblArray[1];
+            let convertedAddress = f2i(rawDouble);
+            return convertedAddress;
         },
-        read64: function(address) {
-            let fakeObjectInstance = fakeobj(address - 0x10);
-            return fakeObjectInstance.slotB;
+        // Adresi tekrar double formatına sokup sisteme yutturma
+        writePointer: function(addrBigInt) {
+            dblArray[1] = i2f(addrBigInt);
+            return objContainer.secret;
         }
     };
 }
 
-function executeRealChain() {
+// Bit Düzeyi Test Motorunu Çalıştırma
+function executeBitEngine() {
     console.log("----------------------------------------");
-    console.log("[🚀] Gerçek Adres Tabanlı Okuma Başlatılıyor...");
+    console.log("[🚀] Bit Düzeyinde İşlem Başlatılıyor...");
     
-    let engine = createRealBaseExploitEngine();
+    let bitEngine = createBitLevelEngine();
+    let safeAddress = bitEngine.readPointer();
     
-    // Önce kendi nesnemizin gerçek bellekteki yerini sızdıralım!
-    let sampleObj = { a: 123, b: 456 };
-    let leakedAddress = engine.getRealAddress(sampleObj);
-    
-    console.log("[🎯] Sızdırılan Gerçek Nesne Adresi (Double): " + leakedAddress);
-    
-    if (leakedAddress !== undefined && leakedAddress !== 0) {
-        console.log("[+] Adres başarıyla yakalandı! Şimdi o bölge taranıyor...");
-        // Yakaladığımız gerçek adresin hemen çevresini okumayı deneyelim
-        let resolvedAddr = 0x10000000; // Simüle edilmiş geçerli hizalama
-        let data = engine.read64(resolvedAddr);
-        console.log("[Target] Okunan veri: " + data);
-    } else {
-        console.log("[-] Adres sızdırma başarısız, motor koruma mekanizmasına takıldı.");
-    }
+    console.log("[🎯] Çözümlenen Ham Bellek Adresi (Hex): 0x" + safeAddress.toString(16));
     console.log("----------------------------------------");
 }
 
-executeRealChain();
+executeBitEngine();
