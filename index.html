@@ -46,13 +46,26 @@ body {
 <div>
     <a href="#" class="btn disabled" id="run">RUN</a>
 </div>
-<div id="msg">Offsets yükleniyor...</div>
+<div id="msg">Sistem kontrol ediliyor...</div>
 
 <script>
 "use strict";
 const EXPLOIT_URL = "notify.html";
-// GitHub Raw linki doğrudan depo adına göre ayarlandı
-const OFFSETS_URL = "https://raw.githubusercontent.com/saatbey2310-bit/ps4-deneme/main/offsets.json";
+
+// Offsets verisini direkt kodun içine gömdük (CORS / fetch hatası tarih oldu)
+const OFFSETS_DATA = {
+  "13.52": {
+    "hc": ["0x1e0d8", "0x1e320", "0x1f368"],
+    "gd": "0x1d11a",
+    "nt": "0x4740",
+    "gps": "0x34f57b8",
+    "gpe": "0x1b280",
+    "cls": "0x34f57a8",
+    "cle": "0x26e70",
+    "ers": "0x34f57b0",
+    "ere": "0xf340"
+  }
+};
 
 const run = document.getElementById("run");
 const msg = document.getElementById("msg");
@@ -79,28 +92,25 @@ function nearest(data, target) {
     return best;
 }
 
-fetch(OFFSETS_URL, { cache: "no-store" })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-        if (!fw) { msg.textContent = "PS4 algılanamadı, UA uyuşmadı 😭"; return; }
-        entry = data[fw];
-        if (entry) {
-            run.classList.remove("disabled");
-            msg.textContent = `Firmware ${fw} - Hazır!`;
-            return;
-        }
-        const near = nearest(data, fw);
+// Dosya indirme / fetch derdi bitti, doğrudan veriyi işliyoruz
+if (!fw) {
+    msg.textContent = "PS4 algılanamadı, UA uyuşmadı 😭";
+} else {
+    entry = OFFSETS_DATA[fw];
+    if (entry) {
+        run.classList.remove("disabled");
+        msg.textContent = `Firmware ${fw} - Hazır!`;
+    } else {
+        const near = nearest(OFFSETS_DATA, fw);
         if (near) {
-            entry = data[near];
+            entry = OFFSETS_DATA[near];
             msg.textContent = `${fw}: exact offset yok, ${near} deneniyor`;
             run.classList.remove("disabled");
         } else {
             msg.textContent = `Firmware ${fw} desteklenmiyor 💀`;
         }
-    })
-    .catch(function () {
-        msg.textContent = "offsets.json yüklenemedi, RAW bağlantısını kontrol et!";
-    });
+    }
+}
 
 run.addEventListener("click", function (e) {
     e.preventDefault();
