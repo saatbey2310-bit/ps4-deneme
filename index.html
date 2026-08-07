@@ -51,8 +51,8 @@ body {
 <script>
 "use strict";
 const EXPLOIT_URL = "notify.html";
-// Dosyalar aynı klasörde olduğu için doğrudan dosya adını yazıyoruz
-const OFFSETS_URL = "offsets.json";
+// GitHub Raw linki doğrudan depo adına göre ayarlandı
+const OFFSETS_URL = "https://raw.githubusercontent.com/saatbey2310-bit/ps4-deneme/main/offsets.json";
 
 const run = document.getElementById("run");
 const msg = document.getElementById("msg");
@@ -99,7 +99,7 @@ fetch(OFFSETS_URL, { cache: "no-store" })
         }
     })
     .catch(function () {
-        msg.textContent = "offsets.json yüklenemedi, GitHub yolunu kontrol et!";
+        msg.textContent = "offsets.json yüklenemedi, RAW bağlantısını kontrol et!";
     });
 
 run.addEventListener("click", function (e) {
