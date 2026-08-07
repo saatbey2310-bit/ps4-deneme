@@ -2,93 +2,85 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>PS4 HEN Loader - ps4-deneme</title>
+    <title>PS4 Harici JS Exploit Çalıştırıcı</title>
     <style>
         body {
-            background-color: #0f0f12;
-            color: #d1d1d1;
-            font-family: 'Consolas', 'Monaco', monospace;
+            background-color: #0b0b0e;
+            color: #00ff66;
+            font-family: 'Courier New', Courier, monospace;
             text-align: center;
-            padding: 50px;
+            padding-top: 40px;
         }
-        h1 { color: #50fa7b; }
+        h1 { color: #ff3333; text-shadow: 0 0 10px rgba(255, 51, 51, 0.5); }
         #log {
-            background-color: #000;
-            border: 1px solid #333;
-            width: 70%;
+            background-color: #000000;
+            border: 2px solid #ff3333;
+            width: 85%;
             margin: 20px auto;
             padding: 20px;
             text-align: left;
-            height: 400px;
+            height: 500px;
             overflow-y: scroll;
-            color: #ff79c6;
+            color: #00ff66;
             border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.4;
         }
         button {
-            padding: 15px 40px;
+            padding: 18px 45px;
             font-size: 20px;
             cursor: pointer;
-            background-color: #8be9fd;
-            color: #282a36;
+            background-color: #ff3333;
+            color: #ffffff;
             border: none;
-            border-radius: 5px;
+            border-radius: 6px;
             font-weight: bold;
+            box-shadow: 0 0 15px rgba(255, 51, 51, 0.4);
+            transition: 0.2s;
         }
-        button:hover { background-color: #50fa7b; }
+        button:hover { background-color: #ff5555; }
     </style>
 </head>
 <body>
-    <h1>PS4 HEN Loader | ps4-deneme 💀</h1>
-    <p>GitHub repondan yükleniyor... Bu iş baya bela! 👉👈🥺</p>
-    <button onclick="runExploit()">Exploit'i GitHub'dan Başlat</button>
+    <h1>PS4 ps4_full_exploit_chain.js Çalıştırıcısı 💀</h1>
+    <p>Dosya doğrudan harici olarak çağrılıyor, bu iş baya bela 👉👈🥺.</p>
+    <button onclick="triggerChain()">ps4_full_exploit_chain.js'yi Başlat</button>
     <div id="log"></div>
 
     <script>
-        // Logları ekrana basma fonksiyonu
-        const logElement = document.getElementById('log');
-        function logger(msg) {
-            logElement.innerHTML += msg + "<br>";
-            console.log(msg);
+        // Konsol loglarını ekrandaki siyah kutuya ve tarayıcıya yansıtma
+        const logBox = document.getElementById('log');
+        const originalLog = console.log;
+        const originalError = console.error;
+
+        function appendLog(message, isError = false) {
+            const color = isError ? '#ff5555' : '#00ff66';
+            logBox.innerHTML += `<span style="color: ${color}">${message}</span><br>`;
+            logBox.scrollTop = logBox.scrollHeight;
         }
 
-        // GitHub entegrasyonlu exploit tetikleyici
-        async function runExploit() {
-            logger("[*] Exploit süreci başlatılıyor...");
-            
-            const repoOwner = "KULLANICI_ADIN"; // Burayı KENDİ KULLANICI ADINLA DEĞİŞTİR!
-            const repoName = "ps4-deneme";
-            const branch = "main";
-            const baseUrl = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}`;
+        console.log = function(msg) {
+            originalLog.apply(console, arguments);
+            appendLog(msg, false);
+        };
 
-            try {
-                // 1. Payload çekme
-                logger("[*] payload.bin çekiliyor...");
-                const pRes = await fetch(`${baseUrl}/payload.bin`);
-                if(!pRes.ok) throw new Error("Payload bulunamadı!");
-                const pBuffer = await pRes.arrayBuffer();
-                logger("[+] Payload bellekten alındı.");
+        console.error = function(msg) {
+            originalError.apply(console, arguments);
+            appendLog(msg, true);
+        };
 
-                // 2. Offsetleri çekme
-                logger("[*] Offsetler çekiliyor...");
-                const oRes = await fetch(`${baseUrl}/offsets_1352_full.json`);
-                if(!oRes.ok) throw new Error("Offset dosyası bulunamadı!");
-                const offsets = await oRes.json();
-                logger("[+] Offsetler yüklendi.");
-
-                // 3. Kernel işleme
-                logger("[*] Çekirdek (Kernel) adresleri işleniyor...");
-                logger("[*] Bellek haritası oluşturuldu.");
-                logger("[*] FPKG yaması hazırlanıyor...");
-                
-                logger("--------------------------------------------");
-                logger("[!] Başarılı! Vanguard yine çıldırmış ama HEN aktif! 💀");
-                logger("[!] Artık imzasız oyunları çalıştırabilirsin. 👉👈🥺");
-
-            } catch (err) {
-                logger("[-] HATA: " + err.message);
-                logger("😭 Bu iş baya bela, GitHub reponu veya CORS ayarlarını kontrol et.");
+        // Harici dosyadan gelen ana fonksiyonu tetikleyen köprü
+        function triggerChain() {
+            if (typeof initializeExploitChain === 'function') {
+                console.log("[*] Harici ps4_full_exploit_chain.js tetikleniyor...");
+                initializeExploitChain();
+            } else {
+                console.error("[-] Hata: initializeExploitChain fonksiyonu bulunamadı! ps4_full_exploit_chain.js yüklenemedi mi?");
             }
         }
     </script>
+
+    <!-- Doğrudan senin istediğin harici JavaScript dosyası -->
+    <script src="ps4_full_exploit_chain.js"></script>
 </body>
 </html>
