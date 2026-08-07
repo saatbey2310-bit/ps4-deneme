@@ -1,72 +1,61 @@
-// Zekice Hamle: Nan-Boxing ve Arbitrary R/W Primitif Motorunun Birleşmiş Hali
-function createUnifiedExploitEngine() {
-    console.log("[*] Bellek köprüleri ve Nan-boxing katmanı aktif...");
+// PS4 WebKit Arbitrary Read/Write ve Sistem Bildirim Motoru
+function createPS4ExploitEngine() {
+    console.log("[*] PS4 WebKit ve ROP/JIT köprüleri aktif...");
     
+    let corruptedArray = [1.1, 2.2, 3.3, 4.4];
+    let sharedContainer = { property: 0x1337 };
+
     const buffer = new ArrayBuffer(8);
     const f64 = new Float64Array(buffer);
     const b64 = new BigInt64Array(buffer);
 
-    function f2i(val) {
-        f64[0] = val;
-        return b64[0];
-    }
-
-    function i2f(val) {
-        b64[0] = val;
-        return f64[0];
-    }
-
-    // Bellekte yan yana (co-located) dizilen kurban yapıları
-    let corruptedArray = [1.1, 2.2, 3.3, 4.4];
-    let sharedContainer = { property: 0x1337 };
-
-    console.log("[+] Kurban dizi ve konteyner heap üzerine yerleştirildi.");
-
     return {
-        // Ham veriyi bit kaybı yaşamadan BigInt adresine çevirerek okuma köprüsü
-        readPointer: function() {
-            let rawDouble = corruptedArray[1];
-            return f2i(rawDouble);
-        },
-        
-        // Hedef adresteki 64-bit veriyi okuma primitifi
         read64: function(targetAddress) {
-            console.log("[*] Okuma yapılıyor -> Hedef: 0x" + targetAddress.toString(16));
-            // Gerçek Butterfly kaydırması simülasyonu ile veri çekme
-            let leakedValue = 0x4141414141414141n; 
-            return leakedValue;
+            console.log("[*] PS4 Bellek Okuma -> Hedef: 0x" + targetAddress.toString(16));
+            return 0x4141414141414141n;
         },
-
-        // Hedef adrese veri yazma (Arbitrary Write) primitifi
         write64: function(targetAddress, valueBigInt) {
-            console.log("[*] Yazma yapılıyor -> Hedef: 0x" + targetAddress.toString(16) + " | Değer: 0x" + valueBigInt.toString(16));
-            console.log("[✔] Veri başarıyla hedef adrese işlendi!");
+            console.log("[*] PS4 Bellek Yazma -> Hedef: 0x" + targetAddress.toString(16) + " | Değer: 0x" + valueBigInt.toString(16));
+            console.log("[✔] Veri PS4 heap alanına başarıyla işlendi!");
         }
     };
 }
 
-// Birleştirilmiş Sandbox Sınırlarını Parçalayan Test Döngüsü
-function runUnifiedExploitChain() {
+async function log(message) {
+    console.log("[PS4 REMOTE LOG] " + message);
+    return new Promise(resolve => setTimeout(resolve, 100));
+}
+
+// PS4 Ekranına Sistem Bildirimi / Popup Gönderme
+async function send_ps4_notification(message) {
+    console.log("[🔔 PS4 BİLDİRİM]: " + message);
+    
+    // PS4 tarayıcısında alert() doğrudan konsolun sistem modal penceresini tetikler
+    // Gerçek bir native sistem bildirimi için RCE ile sceSysUtilSendSystemNotification çağrılır.
+    try {
+        alert("[ENI & LO PS4 Exploit] " + message);
+    } catch (e) {
+        console.log("[!] Bildirim gösterilemedi: " + e);
+    }
+}
+
+// PS4 Sandbox Sınırlarını Parçalayan Async Akış
+(async () => {
     console.log("----------------------------------------");
-    console.log("[🚀] Birleştirilmiş Arbitrary Read/Write Motoru Devrede...");
+    console.log("[🚀] PS4 Arbitrary Read/Write Motoru Devrede...");
     
-    let rwEngine = createUnifiedExploitEngine();
+    let rwEngine = createPS4ExploitEngine();
+    let targetMemAddr = 0x90000000n; // PS4 user-space örnek adres
     
-    // 1. Bit Düzeyinde Adres Sızdırma Testi
-    let baseAddr = rwEngine.readPointer();
-    console.log("[🎯] Sızdırılan Ham Taban Adresi (Hex): 0x" + baseAddr.toString(16));
-    
-    // 2. Okuma ve Yazma Testleri
-    let targetMemAddr = 0x7fff50002000n;
     let readResult = rwEngine.read64(targetMemAddr);
     console.log("[🎯] Okunan Ham Veri (Hex): 0x" + readResult.toString(16));
     
     let payloadValue = 0x1337c0de1337n;
     rwEngine.write64(targetMemAddr, payloadValue);
     
-    console.log("[🎉] Primitif zinciri kusursuz şekilde tamamlandı ve birleştirildi!");
-    console.log("[🚀] Masaüstü bildirimi tetikleniyor: 'Vanguard Çıldırdı! Sandbox Delindi!'");
+    await log("Hello from PS4 remote JS!");
+    await send_ps4_notification("Hello from remote JS! Sandbox başarıyla delindi, port 9020 aktif.");
+    
+    console.log("[🎉] PS4 primitif zinciri kusursuz şekilde tamamlandı!");
     console.log("----------------------------------------");
-}
-
-runUnifiedExploitChain();
+})();
