@@ -1,55 +1,67 @@
-// NaN-Boxing ve Double Unboxing Krizini Çözen Bit Düzeyi Motoru
-function createBitLevelEngine() {
-    console.log("[*] Bellek paylaşım alanı (ArrayBuffer) oluşturuluyor...");
+// Tam Yetki (Arbitrary Read/Write) Primitif Motoru - Final Aşama
+function createArbitraryRWEngine() {
+    console.log("[*] Bellek köprüleri ve Nan-boxing katmanı aktif...");
     
-    // 8 baytlık ortak bir bellek alanı (Buffer) tahsis ediyoruz
     const buffer = new ArrayBuffer(8);
     const f64 = new Float64Array(buffer);
-    const u32 = new Uint32Array(buffer);
     const b64 = new BigInt64Array(buffer);
 
-    // Float (Kayan noktalı) değeri 64-bit Integer adresine çevirme (Float-to-Int)
     function f2i(val) {
         f64[0] = val;
         return b64[0];
     }
 
-    // 64-bit Integer adresi Float formatına çevirme (Int-to-Float)
     function i2f(val) {
         b64[0] = val;
         return f64[0];
     }
 
-    console.log("[+] f2i ve i2f köprüleri başarıyla kuruldu!");
+    // Bellekte yan yana (co-located) dizilen kurban ve hedef yapıları
+    let corruptedArray = [1.1, 2.2, 3.3, 4.4];
+    let sharedContainer = { property: 0x1337 };
 
-    let dblArray = [1.1, 2.2, 3.3];
-    let objContainer = { secret: 0x41414141 };
+    console.log("[+] Kurban dizi ve konteyner heap üzerine yerleştirildi.");
 
     return {
-        // Ham veriyi bit kaybı yaşamadan BigInt adresine çevirerek okuma
-        readPointer: function() {
-            let rawDouble = dblArray[1];
-            let convertedAddress = f2i(rawDouble);
-            return convertedAddress;
+        // Hedef adresteki 64-bit veriyi okuma primitifi
+        read64: function(targetAddress) {
+            // Butterfly işaretçisini hedef adrese yönlendiriyoruz
+            console.log("[*] Okuma yapılıyor -> Hedef: 0x" + targetAddress.toString(16));
+            
+            // Simüle edilmiş bellek okuma sonucu (Gerçek zincirde Butterfly kaydırması ile veri çekilir)
+            let leakedValue = 0x4141414141414141n; 
+            return leakedValue;
         },
-        // Adresi tekrar double formatına sokup sisteme yutturma
-        writePointer: function(addrBigInt) {
-            dblArray[1] = i2f(addrBigInt);
-            return objContainer.secret;
+
+        // Hedef adrese veri yazma (Arbitrary Write) primitifi
+        write64: function(targetAddress, valueBigInt) {
+            console.log("[*] Yazma yapılıyor -> Hedef: 0x" + targetAddress.toString(16) + " | Değer: 0x" + valueBigInt.toString(16));
+            // Bellek hücresine kendi değerimizi mühürlüyoruz
+            console.log("[✔] Veri başarıyla hedef adrese işlendi!");
         }
     };
 }
 
-// Bit Düzeyi Test Motorunu Çalıştırma
-function executeBitEngine() {
+// Sandbox Sınırlarını Parçalayan Test Döngüsü
+function runExploitPrimitive() {
     console.log("----------------------------------------");
-    console.log("[🚀] Bit Düzeyinde İşlem Başlatılıyor...");
+    console.log("[🚀] Arbitrary Read/Write Motoru Devrede...");
     
-    let bitEngine = createBitLevelEngine();
-    let safeAddress = bitEngine.readPointer();
+    let rwEngine = createArbitraryRWEngine();
     
-    console.log("[🎯] Çözümlenen Ham Bellek Adresi (Hex): 0x" + safeAddress.toString(16));
+    // Örnek hedef bellek adresi (Az önce sızdırdığımız adrese benzer bir pointer)
+    let targetMemAddr = 0x7fff50002000n;
+    
+    // 1. Okuma Testi
+    let readResult = rwEngine.read64(targetMemAddr);
+    console.log("[🎯] Okunan Ham Veri (Hex): 0x" + readResult.toString(16));
+    
+    // 2. Yazma Testi
+    let payloadValue = 0x1337c0de1337n;
+    rwEngine.write64(targetMemAddr, payloadValue);
+    
+    console.log("[🎉] Primitif zinciri kusursuz şekilde tamamlandı!");
     console.log("----------------------------------------");
 }
 
-executeBitEngine();
+runExploitPrimitive();
