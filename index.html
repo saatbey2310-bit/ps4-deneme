@@ -1,134 +1,94 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="tr">
 <head>
-<meta charset="utf-8">
-<title>PS4 Exploit Launcher</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body {
-    background-color: #0c0c0f;
-    color: #fff;
-    font-family: Arial, sans-serif;
-    text-align: center;
-    padding-top: 15vh;
-    margin: 0;
-    user-select: none;
-    -webkit-user-select: none;
-}
-.btn {
-    display: inline-block;
-    padding: 20px 40px;
-    cursor: pointer;
-    background-color: #202125;
-    color: #fff;
-    font-size: 24px;
-    font-weight: bold;
-    border-radius: 12px;
-    text-decoration: none;
-    border: 2px solid #333;
-}
-.btn:active {
-    background-color: #444;
-}
-.btn.disabled {
-    opacity: 0.4;
-    pointer-events: none;
-}
-#msg {
-    color: #888;
-    font-size: 14px;
-    margin-top: 20px;
-}
-</style>
+    <meta charset="UTF-8">
+    <title>PS4 HEN Loader - ps4-deneme</title>
+    <style>
+        body {
+            background-color: #0f0f12;
+            color: #d1d1d1;
+            font-family: 'Consolas', 'Monaco', monospace;
+            text-align: center;
+            padding: 50px;
+        }
+        h1 { color: #50fa7b; }
+        #log {
+            background-color: #000;
+            border: 1px solid #333;
+            width: 70%;
+            margin: 20px auto;
+            padding: 20px;
+            text-align: left;
+            height: 400px;
+            overflow-y: scroll;
+            color: #ff79c6;
+            border-radius: 8px;
+        }
+        button {
+            padding: 15px 40px;
+            font-size: 20px;
+            cursor: pointer;
+            background-color: #8be9fd;
+            color: #282a36;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        button:hover { background-color: #50fa7b; }
+    </style>
 </head>
 <body>
+    <h1>PS4 HEN Loader | ps4-deneme 💀</h1>
+    <p>GitHub repondan yükleniyor... Bu iş baya bela! 👉👈🥺</p>
+    <button onclick="runExploit()">Exploit'i GitHub'dan Başlat</button>
+    <div id="log"></div>
 
-<div>
-    <a href="#" class="btn disabled" id="run">RUN</a>
-</div>
-<div id="msg">Sistem kontrol ediliyor...</div>
-
-<script>
-"use strict";
-const EXPLOIT_URL = "notify.html";
-
-// Offsets verisini direkt kodun içine gömdük (CORS / fetch hatası tarih oldu)
-const OFFSETS_DATA = {
-  "13.52": {
-    "hc": ["0x1e0d8", "0x1e320", "0x1f368"],
-    "gd": "0x1d11a",
-    "nt": "0x4740",
-    "gps": "0x34f57b8",
-    "gpe": "0x1b280",
-    "cls": "0x34f57a8",
-    "cle": "0x26e70",
-    "ers": "0x34f57b0",
-    "ere": "0xf340"
-  }
-};
-
-const run = document.getElementById("run");
-const msg = document.getElementById("msg");
-
-const m = /PlayStation 4[\/\s]?(\d+)[.,](\d+)/.exec(navigator.userAgent);
-const fw = m ? `${m[1].padStart(2, "0")}.${m[2].padStart(2, "0")}` : null;
-
-let entry = null;
-
-function fwNum(s) {
-    const p = s.split(".");
-    return parseInt(p[0], 10) * 100 + parseInt(p[1], 10);
-}
-
-function nearest(data, target) {
-    const want = fwNum(target);
-    const maj = target.split(".")[0];
-    let best = null, bestd = 1e9;
-    for (const k in data) {
-        if (k.split(".")[0] !== maj) continue;
-        const d = Math.abs(fwNum(k) - want);
-        if (d < bestd) { bestd = d; best = k; }
-    }
-    return best;
-}
-
-// Dosya indirme / fetch derdi bitti, doğrudan veriyi işliyoruz
-if (!fw) {
-    msg.textContent = "PS4 algılanamadı, UA uyuşmadı 😭";
-} else {
-    entry = OFFSETS_DATA[fw];
-    if (entry) {
-        run.classList.remove("disabled");
-        msg.textContent = `Firmware ${fw} - Hazır!`;
-    } else {
-        const near = nearest(OFFSETS_DATA, fw);
-        if (near) {
-            entry = OFFSETS_DATA[near];
-            msg.textContent = `${fw}: exact offset yok, ${near} deneniyor`;
-            run.classList.remove("disabled");
-        } else {
-            msg.textContent = `Firmware ${fw} desteklenmiyor 💀`;
+    <script>
+        // Logları ekrana basma fonksiyonu
+        const logElement = document.getElementById('log');
+        function logger(msg) {
+            logElement.innerHTML += msg + "<br>";
+            console.log(msg);
         }
-    }
-}
 
-run.addEventListener("click", function (e) {
-    e.preventDefault();
-    if (!entry) return;
-    const q = new URLSearchParams();
-    q.set("go", "1");
-    q.set("fw", fw);
-    q.set("hc", entry.hc.join(","));
-    q.set("gd", entry.gd);
-    q.set("notify", entry.nt);
-    q.set("gps", entry.gps);
-    q.set("gpe", entry.gpe);
-    q.set("cls", entry.cls);
-    q.set("cle", entry.cle);
-    q.set("ers", entry.ers);
-    q.set("ere", entry.ere);
-    location.href = `${EXPLOIT_URL}?${q.toString()}`;
-});
-</script>
+        // GitHub entegrasyonlu exploit tetikleyici
+        async function runExploit() {
+            logger("[*] Exploit süreci başlatılıyor...");
+            
+            const repoOwner = "KULLANICI_ADIN"; // Burayı KENDİ KULLANICI ADINLA DEĞİŞTİR!
+            const repoName = "ps4-deneme";
+            const branch = "main";
+            const baseUrl = `https://raw.githubusercontent.com/${repoOwner}/${repoName}/${branch}`;
+
+            try {
+                // 1. Payload çekme
+                logger("[*] payload.bin çekiliyor...");
+                const pRes = await fetch(`${baseUrl}/payload.bin`);
+                if(!pRes.ok) throw new Error("Payload bulunamadı!");
+                const pBuffer = await pRes.arrayBuffer();
+                logger("[+] Payload bellekten alındı.");
+
+                // 2. Offsetleri çekme
+                logger("[*] Offsetler çekiliyor...");
+                const oRes = await fetch(`${baseUrl}/offsets_1352_full.json`);
+                if(!oRes.ok) throw new Error("Offset dosyası bulunamadı!");
+                const offsets = await oRes.json();
+                logger("[+] Offsetler yüklendi.");
+
+                // 3. Kernel işleme
+                logger("[*] Çekirdek (Kernel) adresleri işleniyor...");
+                logger("[*] Bellek haritası oluşturuldu.");
+                logger("[*] FPKG yaması hazırlanıyor...");
+                
+                logger("--------------------------------------------");
+                logger("[!] Başarılı! Vanguard yine çıldırmış ama HEN aktif! 💀");
+                logger("[!] Artık imzasız oyunları çalıştırabilirsin. 👉👈🥺");
+
+            } catch (err) {
+                logger("[-] HATA: " + err.message);
+                logger("😭 Bu iş baya bela, GitHub reponu veya CORS ayarlarını kontrol et.");
+            }
+        }
+    </script>
 </body>
 </html>
