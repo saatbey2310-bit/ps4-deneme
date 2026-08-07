@@ -1,86 +1,234 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8">
-    <title>PS4 Harici JS Exploit Çalıştırıcı</title>
-    <style>
-        body {
-            background-color: #0b0b0e;
-            color: #00ff66;
-            font-family: 'Courier New', Courier, monospace;
-            text-align: center;
-            padding-top: 40px;
-        }
-        h1 { color: #ff3333; text-shadow: 0 0 10px rgba(255, 51, 51, 0.5); }
-        #log {
-            background-color: #000000;
-            border: 2px solid #ff3333;
-            width: 85%;
-            margin: 20px auto;
-            padding: 20px;
-            text-align: left;
-            height: 500px;
-            overflow-y: scroll;
-            color: #00ff66;
-            border-radius: 8px;
-            font-size: 14px;
-            line-height: 1.4;
-        }
-        button {
-            padding: 18px 45px;
-            font-size: 20px;
-            cursor: pointer;
-            background-color: #ff3333;
-            color: #ffffff;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            box-shadow: 0 0 15px rgba(255, 51, 51, 0.4);
-            transition: 0.2s;
-        }
-        button:hover { background-color: #ff5555; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PS4.js Log Viewer</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0b0f14;
+      color: #e6edf3;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: auto;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+    }
+
+    .sub {
+      color: #8b949e;
+      margin-bottom: 18px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    button {
+      border: 1px solid #30363d;
+      background: #161b22;
+      color: #e6edf3;
+      padding: 10px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    button:hover {
+      background: #21262d;
+    }
+
+    #status {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      background: #0d1117;
+    }
+
+    #logs {
+      height: 65vh;
+      overflow-y: auto;
+      background: #010409;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+    }
+
+    .log {
+      color: #c9d1d9;
+    }
+
+    .info {
+      color: #58a6ff;
+    }
+
+    .warn {
+      color: #d29922;
+    }
+
+    .error {
+      color: #f85149;
+    }
+
+    .success {
+      color: #3fb950;
+    }
+
+    .time {
+      color: #6e7681;
+      margin-right: 8px;
+    }
+  </style>
 </head>
+
 <body>
-    <h1>PS4 ps4_full_exploit_chain.js Çalıştırıcısı 💀</h1>
-    <p>Dosya doğrudan harici olarak çağrılıyor, bu iş baya bela 👉👈🥺.</p>
-    <button onclick="triggerChain()">ps4_full_exploit_chain.js'yi Başlat</button>
-    <div id="log"></div>
+  <div class="container">
+    <h1>PS4.js Log Viewer</h1>
+    <div class="sub">ps4.js çıktıları burada gösterilir.</div>
 
-    <script>
-        // Konsol loglarını ekrandaki siyah kutuya ve tarayıcıya yansıtma
-        const logBox = document.getElementById('log');
-        const originalLog = console.log;
-        const originalError = console.error;
+    <div class="toolbar">
+      <button onclick="loadPS4()">ps4.js çalıştır</button>
+      <button onclick="clearLogs()">Logları temizle</button>
+    </div>
 
-        function appendLog(message, isError = false) {
-            const color = isError ? '#ff5555' : '#00ff66';
-            logBox.innerHTML += `<span style="color: ${color}">${message}</span><br>`;
-            logBox.scrollTop = logBox.scrollHeight;
-        }
+    <div id="status">Durum: Hazır</div>
+    <div id="logs"></div>
+  </div>
 
-        console.log = function(msg) {
-            originalLog.apply(console, arguments);
-            appendLog(msg, false);
-        };
+  <script>
+    const logs = document.getElementById("logs");
+    const statusEl = document.getElementById("status");
 
-        console.error = function(msg) {
-            originalError.apply(console, arguments);
-            appendLog(msg, true);
-        };
+    function time() {
+      return new Date().toLocaleTimeString();
+    }
 
-        // Harici dosyadan gelen ana fonksiyonu tetikleyen köprü
-        function triggerChain() {
-            if (typeof initializeExploitChain === 'function') {
-                console.log("[*] Harici ps4_full_exploit_chain.js tetikleniyor...");
-                initializeExploitChain();
-            } else {
-                console.error("[-] Hata: initializeExploitChain fonksiyonu bulunamadı! ps4_full_exploit_chain.js yüklenemedi mi?");
-            }
-        }
-    </script>
+    function stringify(value) {
+      if (typeof value === "string") return value;
 
-    <!-- Doğrudan senin istediğin harici JavaScript dosyası -->
-    <script src="ps4_full_exploit_chain.js"></script>
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return String(value);
+      }
+    }
+
+    function addLog(type, args) {
+      const line = document.createElement("div");
+      line.className = type;
+
+      const timestamp = document.createElement("span");
+      timestamp.className = "time";
+      timestamp.textContent = `[${time()}]`;
+
+      const text = document.createElement("span");
+      text.textContent = args.map(stringify).join(" ");
+
+      line.appendChild(timestamp);
+      line.appendChild(text);
+      logs.appendChild(line);
+
+      logs.scrollTop = logs.scrollHeight;
+    }
+
+    const originalLog = console.log;
+    const originalInfo = console.info;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+
+    console.log = (...args) => {
+      originalLog(...args);
+      addLog("log", args);
+    };
+
+    console.info = (...args) => {
+      originalInfo(...args);
+      addLog("info", args);
+    };
+
+    console.warn = (...args) => {
+      originalWarn(...args);
+      addLog("warn", args);
+    };
+
+    console.error = (...args) => {
+      originalError(...args);
+      addLog("error", args);
+    };
+
+    window.addEventListener("error", event => {
+      addLog("error", [
+        "JS Error:",
+        event.message,
+        event.filename ? `(${event.filename}:${event.lineno})` : ""
+      ]);
+    });
+
+    window.addEventListener("unhandledrejection", event => {
+      addLog("error", [
+        "Unhandled Promise Rejection:",
+        event.reason
+      ]);
+    });
+
+    function clearLogs() {
+      logs.innerHTML = "";
+      console.info("Log ekranı temizlendi.");
+    }
+
+    async function loadPS4() {
+      statusEl.textContent = "Durum: ps4.js yükleniyor...";
+      console.info("ps4.js yükleniyor...");
+
+      const oldScript = document.getElementById("ps4-script");
+      if (oldScript) {
+        oldScript.remove();
+      }
+
+      const script = document.createElement("script");
+      script.id = "ps4-script";
+
+      // Cache yüzünden eski JS gelmesin diye timestamp eklenir.
+      script.src = "./ps4.js?t=" + Date.now();
+
+      script.onload = () => {
+        statusEl.textContent = "Durum: ps4.js çalıştırıldı.";
+        addLog("success", ["ps4.js başarıyla yüklendi ve çalıştırıldı."]);
+      };
+
+      script.onerror = () => {
+        statusEl.textContent = "Durum: ps4.js yüklenemedi.";
+        addLog("error", [
+          "ps4.js yüklenemedi.",
+          "index.html ve ps4.js aynı klasörde mi kontrol et."
+        ]);
+      };
+
+      document.body.appendChild(script);
+    }
+
+    console.info("Log Viewer hazır.");
+  </script>
 </body>
 </html>
